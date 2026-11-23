@@ -1,0 +1,9 @@
+{
+  "description": "Gate-level check of the constructions on every computational basis state (Sec. 3).",
+  "instances": [[6, 0], [8, 0], [8, 1]],
+  "instance_seed": "seed = 777 + 10 * n + idx",
+  "bits_b": [1, 2, 3],
+  "gamma": 0.37,
+  "modes": {"plane": [4, 8, null], "joint": [4, 8, null], "pg": [4, 8, null], "value": [4, 8, null]},
+  "tolerance": 1e-9
+}

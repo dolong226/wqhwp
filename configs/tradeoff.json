@@ -1,0 +1,11 @@
+{
+  "description": "Quality-resource trade-off of weight quantization on SK instances (Tables 2-3, Fig. 2, Sec. 5.2-5.3).",
+  "family": "SK: complete graph, w_ij ~ N(0,1), minimize E_w = sum w_ij z_i z_j",
+  "sizes": {"14": 24, "16": 16, "18": 8},
+  "instance_seed": "seed = 600000000 + 1000 * n + idx",
+  "arms": ["EXACT", "BP1", "BP2", "BP3", "CLUSTER_4", "GRID_4"],
+  "depths": [1, 2, 3],
+  "objective": "angles maximize the expected ORIGINAL cost; the phase Hamiltonian of each arm is divided by its standard deviation over all bit strings",
+  "optimizer": "L-BFGS-B; p = 1: best of 10 random starts; p >= 2: INTERP start + 5 random starts; random-start seed = seed * 100 + arm_index * 10 + p (arm_index = position in 'arms')",
+  "cost": "VALUE construction, batch B = 16, T_rot = 40 (delta = 1e-4), Toffoli = 4 T"
+}

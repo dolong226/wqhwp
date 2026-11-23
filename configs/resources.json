@@ -1,0 +1,10 @@
+{
+  "description": "Analytic resources of the phase-separator constructions for n = 16..256 (Table 1, Sec. 5.1).",
+  "sizes": [16, 32, 64, 128, 256],
+  "instances_per_size": 4,
+  "instance_seed": "w = default_rng(20261115 + 1000 * n + idx).normal(0, 1, n(n-1)/2)",
+  "bits_b": [2, 3],
+  "batch_B": [16, 64, null],
+  "models": {"M1": "T_rot = 40 (delta = 1e-4), Toffoli = 4 T", "M2": "RUS rotation 1.15 (b_pha + log2 R) + 10.925 T, b_pha = 14, Toffoli = 2 T"},
+  "statistic": "median over the instances of each size"
+}

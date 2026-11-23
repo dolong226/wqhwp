@@ -1,0 +1,8 @@
+{
+  "description": "Is the true optimum still the unique ground state of the rounded Hamiltonian? Exhaustive enumeration, no QAOA (Table 4).",
+  "family": "SK: complete graph, w_ij ~ N(0,1)",
+  "sizes": {"12": 100, "14": 100, "16": 100, "18": 100, "20": 100, "22": 50, "24": 20},
+  "instance_seed": "seed = 20261116 + 100 * n + idx",
+  "arms": ["BP1", "BP2", "BP3", "BP4", "CLUSTER_4", "GRID_4"],
+  "preserved": "no state (up to a global spin flip) has strictly lower or equal rounded energy than the true optimum (relative tolerance 1e-9)"
+}
