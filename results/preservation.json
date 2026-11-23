@@ -1,13 +1,13 @@
 {
  "script": "run_preservation.py",
- "script_sha256": "0b6aaf41d44074f18917d1cb7b294f2780f13b1e1520ef1478540f653844da96",
+ "script_sha256": "d1f0b39872cbf1ba9297ed26de9b91af7c16052b8b2f8213411303bc26059b54",
  "config_sha256": "033fb23e4b5db08a6e9ae820aaf0135eeab37a50e33a64ac7f341ee336f0b3f8",
  "versions": {
   "python": "3.14.7",
   "numpy": "2.5.4",
   "scipy": "1.18.1"
  },
- "runtime_s": 48.97252702713013,
+ "runtime_s": 38.552369117736816,
  "instances": [
   {
    "n": 12,
