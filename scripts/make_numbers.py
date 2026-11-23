@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from _common import RESULTS
-from wqhwp.instances import sk_instance, spins, energy
+from wqhwp.instances import INSTANCES, sk_instance, spins, energy
 from wqhwp.quantize import quantize, magnitudes, level_sizes
 from wqhwp.resources import tcount, TROT
 
@@ -22,7 +22,8 @@ def resources_macros(rt):
     out = []
     NS, NT = (16, 32, 64, 128, 256), 64
     k16, k64, kinf = f"n{NT}_b2_B16", f"n{NT}_b2_B64", f"n{NT}_b2_BNone"
-    cons = [("PER_TERM_LP", k16, "per-term (rounded $H$)"), ("S_DIRECT_PG_LP", k16, "Sanders direct + PG"),
+    out.append("\\providecommand{\\labPerTerm}{per-term (rounded $H$)}\\providecommand{\\labSandersPG}{Sanders direct + PG}")
+    cons = [("PER_TERM_LP", k16, "\\labPerTerm"), ("S_DIRECT_PG_LP", k16, "\\labSandersPG"),
             ("VALUE", k16, "\\textbf{value}, $B{=}16$"), ("PLANE", k16, "plane, $B{=}16$"),
             ("JOINT_PG", k16, "pg, $B{=}16$"), ("VALUE", k64, "\\textbf{value}, $B{=}64$"),
             ("PLANE", kinf, "plane, $B{=}\\infty$")]
@@ -60,6 +61,9 @@ def preservation_macros(pr):
         fr = [np.mean([r["arms"][a]["preserved"] for r in pr if r["n"] == n]) for n in ns]
         rows.append(lab + " & " + f"{med([r['arms'][a]['eps'] for r in pr]):.2f}" + " & "
                     + " & ".join(f"{x:.2f}" for x in fr) + "\\\\")
+        t = {"BP1": "BPone", "BP2": "BPtwo", "BP3": "BPthree", "BP4": "BPfour", "CLUSTER_4": "Cluster", "GRID_4": "Grid"}[a]
+        out += [f"\\newcommand{{\\presMin{t}}}{{{min(fr):.2f}}}", f"\\newcommand{{\\presMax{t}}}{{{max(fr):.2f}}}",
+                f"\\newcommand{{\\presLast{t}}}{{{fr[-1]:.2f}}}"]
     out.append("\\newcommand{\\tabpresrows}{" + "\n".join(rows) + "}")
     out.append("\\newcommand{\\tabpreshead}{" + " & ".join(f"${n}$" for n in ns) + "}")
     out.append("\\newcommand{\\tabprescnt}{" + ", ".join(str(sum(r["n"] == n for r in pr)) for n in ns) + "}")
@@ -129,6 +133,11 @@ def tradeoff_macros(tr):
         c = (xs @ ys) / (xs @ xs)
         r2 = 1 - ((ys - c * xs) ** 2).sum() / ((ys - ys.mean()) ** 2).sum()
         out += [f"\\newcommand{{\\cFit{name}}}{{{c:.2f}}}", f"\\newcommand{{\\rsqFit{name}}}{{{r2:.2f}}}"]
+        if p == "3":                     # sign changes and how the scatter around c eps^2 grows with eps
+            res_ = ys - c * xs
+            k = np.polyfit(np.log(np.sqrt(xs)), np.log(np.abs(res_) + 1e-12), 1)[0]
+            out += [f"\\newcommand{{\\fitNeg}}{{{int((ys < 0).sum())}}}", f"\\newcommand{{\\fitPairs}}{{{len(ys)}}}",
+                    f"\\newcommand{{\\residExp}}{{{k:.1f}}}"]
     rows = []
     for n in nsu:
         rn = [r for r in tr if r["n"] == n]
@@ -136,6 +145,49 @@ def tradeoff_macros(tr):
                  for a in ("EXACT", "BP1", "BP2", "BP3")]
         rows.append(f"{n} & " + " & ".join(cells) + "\\\\")
     out.append("\\newcommand{\\tabAbsRows}{" + "\n".join(rows) + "}")
+    return out
+
+FAMILY = {"sk": "sk", "reg": "regular3"}
+ARMTAG = {"BP1": "BPone", "BP2": "BPtwo", "BP3": "BPthree", "CLUSTER_4": "Cluster", "GRID_4": "Grid",
+          "MAGKM_2": "MagTwo", "MAGKM_3": "MagThree", "PRUNE_2": "PruneTwo"}
+
+
+def arm_macros(tr, prows, fam):
+    """Per-arm summary at p = 3 for one instance family, macros \\<fam><Arm><Stat>, plus a table body \\<fam>ArmRows."""
+    out, body = [], []
+    for a in [a for a in tr[0]["arms"] if a != "EXACT"]:
+        t = fam + ARMTAG[a]
+        eps = [r["arms"][a]["eps"] for r in tr]
+        dr = np.array([100 * (r["arms"]["EXACT"]["p"]["3"]["r"] - r["arms"][a]["p"]["3"]["r"]) for r in tr])
+        P = [r["arms"][a]["p"]["3"]["P_opt"] / r["arms"]["EXACT"]["p"]["3"]["P_opt"] for r in tr]
+        pres = sum(x["preserved"] for x in prows if x["arm"] == a)
+        if a.startswith(("BP", "MAGKM")):
+            T = sum(r["arms"][a]["T_value_B16"] for r in tr)
+        elif a.startswith("PRUNE"):                                  # per-term rotations on the kept edges
+            T = sum(r["arms"][a]["L_nz"] * TROT for r in tr)
+        else:                                                        # one group per signed level, no sign absorption
+            T = sum(tcount(level_sizes(quantize(a, INSTANCES[FAMILY[fam]](r["seed"], r["n"])[1])), 16)[0] for r in tr)
+        tred = f"{sum(r['L'] for r in tr) * TROT / T:.2f}"
+        zero = 1 - sum(r["arms"][a].get("L_nz", r["L"]) for r in tr) / sum(r["L"] for r in tr)
+        vals = {"Eps": f"{med(eps):.2f}", "Dr": f"{np.median(dr):.2f}", "DrNinety": f"{np.quantile(dr, 0.9):.2f}",
+                "Pret": f"{med(P):.2f}", "Pres": str(pres), "Tred": tred, "Zero": f"{100 * zero:.0f}"}
+        out += [f"\\newcommand{{\\{t}{k}}}{{{v}}}" for k, v in vals.items()]
+        body.append(f"{a.replace('_', '$_{') + '}$' if '_' in a else a} & {vals['Eps']} & {vals['Zero']} & {tred} & "
+                    f"{vals['Dr']} & {vals['DrNinety']} & {vals['Pret']} & {pres}/{len(tr)}\\\\")
+    xs = np.array([r["arms"][a]["eps"] ** 2 for r in tr for a in r["arms"] if a != "EXACT"])
+    ys = np.array([1 - r["arms"][a]["p"]["3"]["r"] / r["arms"]["EXACT"]["p"]["3"]["r"] for r in tr for a in r["arms"] if a != "EXACT"])
+    c = (xs @ ys) / (xs @ xs)
+    out += ["\\newcommand{\\" + fam + "ArmRows}{" + "\n".join(body) + "}",
+            f"\\newcommand{{\\{fam}cFit}}{{{c:.2f}}}",
+            f"\\newcommand{{\\{fam}rsqFit}}{{{1 - ((ys - c * xs) ** 2).sum() / ((ys - ys.mean()) ** 2).sum():.2f}}}",
+            f"\\newcommand{{\\{fam}N}}{{{len(tr)}}}"]
+    loss = lambda r, a: 100 * (r["arms"]["EXACT"]["p"]["3"]["r"] - r["arms"][a]["p"]["3"]["r"])
+    for a, ref, tag in (("MAGKM_2", "BP2", "Two"), ("MAGKM_3", "BP3", "Three")):   # paired: MAGKM_b against BP_b
+        d = [loss(r, a) - loss(r, ref) for r in tr]
+        out += [f"\\newcommand{{\\{fam}MagWins{tag}}}{{{sum(x < 0 for x in d)}}}",
+                f"\\newcommand{{\\{fam}MagDiff{tag}}}{{{med(d):+.2f}}}".replace("-0.00", "0.00").replace("+0.00", "0.00")]
+    share = med([loss(r, "PRUNE_2") for r in tr]) / med([loss(r, "BP2") for r in tr])
+    out.append(f"\\newcommand{{\\{fam}PruneShare}}{{{100 * share:.0f}}}")
     return out
 
 
@@ -151,14 +203,20 @@ def main():
     v = J("verify.json")
     out += [f"\\newcommand{{\\verN}}{{{v['n_configs']}}}", f"\\newcommand{{\\verOK}}{{{sum(r['ok'] for r in v['rows'])}}}",
             "\\newcommand{\\verErr}{" + f"{v['max_phase_error']:.0e}".replace("e-", "\\times10^{-") + "}}"]
-    tp = J("preservation_tradeoff.json")
-    for key, tag in (("pooled", "All"), ("BP2", "BPtwo")):
-        s = tp["pooled"] if key == "pooled" else tp["by_arm"][key]
-        out += [f"\\newcommand{{\\PretPreserved{tag}}}{{{s['median_P_ret_preserved']:.2f}}}",
-                f"\\newcommand{{\\PretNotPreserved{tag}}}{{{s['median_P_ret_not']:.2f}}}",
-                f"\\newcommand{{\\nPreserved{tag}}}{{{s['n_preserved']}}}",
-                f"\\newcommand{{\\nNotPreserved{tag}}}{{{s['n_not']}}}",
-                f"\\newcommand{{\\nPairs{tag}}}{{{s['n_rows']}}}"]
+    rows = J("preservation_tradeoff.json")["rows"]
+    orig = ("BP1", "BP2", "BP3", "CLUSTER_4", "GRID_4")          # arms of the main comparison
+    for sel, tag in ((orig, "All"), (("BP2",), "BPtwo")):
+        R = [x for x in rows if x["arm"] in sel]
+        P = [x["P_ret"] for x in R if x["preserved"]]
+        N = [x["P_ret"] for x in R if not x["preserved"]]
+        out += [f"\\newcommand{{\\PretPreserved{tag}}}{{{med(P):.2f}}}",
+                f"\\newcommand{{\\PretNotPreserved{tag}}}{{{med(N):.2f}}}",
+                f"\\newcommand{{\\nPreserved{tag}}}{{{len(P)}}}",
+                f"\\newcommand{{\\nNotPreserved{tag}}}{{{len(N)}}}",
+                f"\\newcommand{{\\nPairs{tag}}}{{{len(R)}}}"]
+    out += arm_macros(J("tradeoff.json")["instances"], rows, "sk")
+    if (res / "tradeoff_regular3.json").exists():
+        out += arm_macros(J("tradeoff_regular3.json")["instances"], J("preservation_tradeoff_regular3.json")["rows"], "reg")
     (res / "numbers.tex").write_text("\n".join(out) + "\n")
     print("wrote", res / "numbers.tex", len(out), "lines")
 

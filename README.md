@@ -12,8 +12,8 @@ original cost, so the price of rounding is a loss of QAOA solution quality, whic
 
 ```
 wqhwp/            library
-  instances.py    SK instances, exact energies, optimum-preservation test
-  quantize.py     BP_b (sign + b-bit magnitude), CLUSTER_k (optimal 1D k-means), GRID_k
+  instances.py    SK and weighted 3-regular MaxCut instances, exact energies, optimum-preservation test
+  quantize.py     BP_b (sign + b-bit magnitude), MAGKM_b, PRUNE_b, CLUSTER_k (optimal 1D k-means), GRID_k
   qaoa.py         statevector QAOA, L-BFGS-B with INTERP initialization
   resources.py    rotations / Toffolis / ancillas / T-count of every construction, cost models M1 and M2
   circuits.py     reversible gate-level simulation used to verify the constructions
@@ -29,7 +29,7 @@ Python 3.14 with the versions in `requirements.txt`:
 
 ```bash
 python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
-./reproduce.sh                      # everything, about 1.3 h with 6 workers on a laptop
+./reproduce.sh                      # everything, about 4 h with 8 workers on a laptop
 ```
 
 | script | paper | output | time |
@@ -37,8 +37,9 @@ python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 | `scripts/verify_circuits.py` | Sec. 3, gate-level check of 108 configurations | `results/verify.json` | ~1 s |
 | `scripts/run_resources.py` | Table 1, Sec. 5.1 (n = 16..256) | `results/resources.json` | ~2 s |
 | `scripts/run_preservation.py enumerate` | Table 4 (n = 12..24, exhaustive) | `results/preservation.json` | ~1 min |
-| `scripts/run_tradeoff.py --workers 6` | Tables 2-3, Fig. 2 (48 SK instances, p = 1..3) | `results/tradeoff.json` | ~1.3 h |
-| `scripts/run_preservation.py tradeoff` | Sec. 5.3 (preservation vs. P_ret) | `results/preservation_tradeoff.json` | ~15 s |
+| `scripts/run_tradeoff.py --config tradeoff.json` | Tables 2-3, Fig. 2 (48 SK instances, p = 1..3) | `results/tradeoff.json` | ~2 h |
+| `scripts/run_tradeoff.py --config tradeoff_regular3.json` | weighted MaxCut on 3-regular graphs (48 instances) | `results/tradeoff_regular3.json` | ~2 h |
+| `scripts/run_preservation.py tradeoff <config>` | Sec. 5.3 (preservation vs. P_ret) | `results/preservation_<output>` | ~15 s |
 | `scripts/make_numbers.py` | all numbers in the text and tables | `results/numbers.tex` | ~10 s |
 
 Run the scripts from this directory. Each JSON output records the SHA-256 of the script and config that produced it
@@ -48,8 +49,12 @@ reach slightly different local optima, which changes the numbers in the last dig
 
 ## Definitions used in the code
 
-- Weights: SK, complete graph, $w_{ij}\sim\mathcal N(0,1)$; instance seeds are given in `configs/`.
+- Instances: SK, complete graph, $w_{ij}\sim\mathcal N(0,1)$; weighted MaxCut on random 3-regular graphs,
+  $w_e\sim U(0,1)$. Instance seeds are given in `configs/`.
 - BP$_b$: $\hat w_e = s_e\,d\,m_e$, $m_e\in\{0,\dots,2^b-1\}$, step $d$ minimizing $\lVert w-\hat w\rVert_2$ on a grid.
+- MAGKM$_b$: $\hat w_e = s_e\,q(|w_e|)$ with $q$ the optimal 1D quantizer with levels $\{0,c_1,\dots,c_{2^b-1}\}$: same
+  number of equal-angle groups as BP$_b$, unequal levels (enough for VALUE, not for the bit-plane constructions).
+- PRUNE$_b$: original weights on the edges BP$_b$ keeps, 0 on the edges it drops (separates dropping from rounding).
 - QAOA: phase Hamiltonian of each arm divided by its standard deviation; angles maximize the expected *original* cost.
 - Quality: $r=(E_{\max}-\overline E)/(E_{\max}-E_{\min})$, $\Delta r = r_w - r_{\hat w}$;
   $P_{\mathrm{ret}} = P_{\mathrm{opt}}(\hat w)/P_{\mathrm{opt}}(w)$, all at $p=3$.

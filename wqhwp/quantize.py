@@ -4,6 +4,9 @@ BP_b       w_hat_e = s_e * d * m_e with s_e = sign(w_e) and m_e in {0, ..., 2^b 
            over a 1D grid. Edges with m_e = 0 drop out of the phase separator.
 CLUSTER_k  optimal 1D k-means on the signed weights (dynamic programming).
 GRID_k     k equally spaced levels between min(w) and max(w).
+MAGKM_b    sign(w_e) times an optimal 1D quantizer of |w_e| with levels {0, c_1, ..., c_K}, K = 2^b - 1 (dynamic
+           programming; the smallest magnitudes map to 0). Same number of equal-angle groups as BP_b, unequal levels.
+PRUNE_b    w_e where BP_b keeps the edge (m_e > 0), 0 where BP_b drops it: isolates the effect of dropping edges.
 """
 import numpy as np
 
@@ -67,6 +70,40 @@ def kmeans1d(x, k):
     return out
 
 
+def magkm(w, b):
+    """MAGKM_b: minimize ||w - sign(w) * q(|w|)||_2 over q with at most 2^b - 1 nonzero levels plus the level 0."""
+    K = 2 ** b - 1
+    a = np.abs(w)
+    order = np.argsort(a, kind="stable")
+    s = a[order]
+    m = len(s)
+    c1 = np.concatenate([[0], np.cumsum(s)])
+    c2 = np.concatenate([[0], np.cumsum(s * s)])
+    D = np.full((K + 1, m + 1), np.inf)
+    A = np.full((K + 1, m + 1), -1, dtype=int)
+    D[0] = c2                                   # s[:j] all mapped to 0
+    for k in range(1, K + 1):
+        for j in range(1, m + 1):
+            i = np.arange(j)
+            v = D[k - 1, :j] + (c2[j] - c2[i]) - (c1[j] - c1[i]) ** 2 / (j - i)
+            t = int(np.argmin(v))
+            if v[t] < D[k - 1, j]:
+                D[k, j], A[k, j] = v[t], t
+            else:                                # fewer than k nonzero levels is at least as good
+                D[k, j] = D[k - 1, j]
+    q = np.zeros(m)
+    j, k = m, K
+    while k > 0 and j > 0:
+        i = A[k, j]
+        if i >= 0:
+            q[i:j] = s[i:j].mean()
+            j = i
+        k -= 1
+    out = np.empty(m)
+    out[order] = q
+    return np.sign(w) * out
+
+
 def grid(x, k):
     lo, hi = x.min(), x.max()
     if k == 1:
@@ -76,13 +113,17 @@ def grid(x, k):
 
 
 def quantize(arm, w):
-    """arm in {EXACT, BP<b>, CLUSTER_<k>, GRID_<k>}."""
+    """arm in {EXACT, BP<b>, CLUSTER_<k>, GRID_<k>, MAGKM_<b>, PRUNE_<b>}."""
     if arm == "EXACT":
         return w.copy()
     if arm.startswith("BP"):
         return bitplane(w, int(arm[2:]))[0]
     kind, k = arm.split("_")
-    return kmeans1d(w, int(k)) if kind == "CLUSTER" else grid(w, int(k))
+    if kind == "MAGKM":
+        return magkm(w, int(k))
+    if kind == "PRUNE":
+        return np.where(magnitudes(w, int(k))[0] > 0, w, 0.0)
+    return {"CLUSTER": kmeans1d, "GRID": grid}[kind](w, int(k))
 
 
 def level_sizes(q):

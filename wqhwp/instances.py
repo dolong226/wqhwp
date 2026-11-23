@@ -1,4 +1,4 @@
-"""Sherrington-Kirkpatrick instances and exact energies.
+"""Problem instances (SK; weighted MaxCut on random 3-regular graphs) and exact energies.
 
 Convention: E_w(z) = sum_{i<j} w_ij z_i z_j is minimized. Computational-basis bit 0 <-> z = +1, bit 1 <-> z = -1,
 qubit 0 is the most significant bit.
@@ -12,6 +12,22 @@ def sk_instance(seed, n):
     """Complete graph on n vertices, w_ij ~ N(0, 1) drawn from numpy default_rng(seed) in lexicographic edge order."""
     edges = [(i, j) for i in range(n) for j in range(i + 1, n)]
     return edges, np.random.default_rng(seed).normal(0, 1, len(edges))
+
+
+def regular3_instance(seed, n):
+    """Random 3-regular graph (pairing model with rejection) with weights w_ij ~ U(0, 1), from default_rng(seed).
+    Weighted MaxCut maximizes sum_e w_e (1 - z_i z_j) / 2, i.e. minimizes E_w = sum_e w_e z_i z_j."""
+    assert n % 2 == 0
+    rng = np.random.default_rng(seed)
+    while True:
+        stubs = rng.permutation(np.repeat(np.arange(n), 3)).reshape(-1, 2)
+        edges = sorted({(int(min(u, v)), int(max(u, v))) for u, v in stubs})
+        if len(edges) == 3 * n // 2 and all(u != v for u, v in edges):
+            break
+    return edges, rng.uniform(0, 1, len(edges))
+
+
+INSTANCES = {"sk": sk_instance, "regular3": regular3_instance}
 
 
 def spins(n):

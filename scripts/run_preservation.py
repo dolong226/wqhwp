@@ -1,10 +1,11 @@
 """Optimum preservation under weight rounding.
 
 Part 'enumerate' (Table 4): exhaustive enumeration on fresh SK instances, n = 12..24, no QAOA (about 1 min).
-Part 'tradeoff' (Sec. 5.3): the same test on the instances of results/tradeoff.json, related to P_ret = P_opt(arm) /
-P_opt(EXACT) at p = 3 (seconds; requires run_tradeoff.py first).
-Output: results/preservation.json, results/preservation_tradeoff.json
-Usage (from release/): python scripts/run_preservation.py {enumerate|tradeoff}
+Part 'tradeoff' (Sec. 5.3): the same test on the instances of a trade-off run, related to P_ret = P_opt(arm) /
+P_opt(EXACT) at p = 3 (seconds; requires run_tradeoff.py with the same config first).
+Output: results/preservation.json, results/preservation_<trade-off output name>
+Usage (from release/): python scripts/run_preservation.py enumerate
+                       python scripts/run_preservation.py tradeoff [tradeoff.json | tradeoff_regular3.json]
 """
 import json
 import sys
@@ -14,7 +15,7 @@ from multiprocessing import Pool
 import numpy as np
 
 from _common import RESULTS, load_config, write_result
-from wqhwp.instances import sk_instance, spins, energy, energies_half, preservation
+from wqhwp.instances import INSTANCES, sk_instance, spins, energy, energies_half, preservation
 from wqhwp.quantize import quantize
 import run_tradeoff as TR
 
@@ -46,13 +47,14 @@ def enumerate_part():
     write_result("preservation.json", __file__, "preservation.json", {"runtime_s": time.time() - t0, "instances": res})
 
 
-def tradeoff_part():
-    tr = json.loads((RESULTS / "tradeoff.json").read_text())
-    arms = [a for a in TR.ARMS if a != "EXACT"]
+def tradeoff_part(cfg_name="tradeoff.json"):
+    c = TR.cfg(cfg_name)
+    tr = json.loads((RESULTS / c["output"]).read_text())
+    arms = [a for a in c["arms"] if a != "EXACT"]
     rows = []
     for r in tr["instances"]:
         n, idx = r["n"], r["idx"]
-        edges, w = sk_instance(r["seed"], n)
+        edges, w = INSTANCES[c["family_key"]](r["seed"], n)
         Z = spins(n)
         half = 1 << (n - 1)
         E = energy(Z, edges, w)[:half]
@@ -68,12 +70,13 @@ def tradeoff_part():
         P = [x["P_ret"] for x in R if x["preserved"]]
         N = [x["P_ret"] for x in R if not x["preserved"]]
         return {"n_rows": len(R), "n_preserved": len(P), "n_not": len(N),
-                "median_P_ret_preserved": float(np.median(P)), "median_P_ret_not": float(np.median(N))}
+                "median_P_ret_preserved": float(np.median(P)) if P else None,
+                "median_P_ret_not": float(np.median(N)) if N else None}
 
-    write_result("preservation_tradeoff.json", __file__, None,
+    write_result("preservation_" + c["output"], __file__, cfg_name,
                  {"pooled": summ(rows), "by_arm": {a: summ([x for x in rows if x["arm"] == a]) for a in arms},
                   "rows": rows})
 
 
 if __name__ == "__main__":
-    {"enumerate": enumerate_part, "tradeoff": tradeoff_part}[sys.argv[1]]()
+    {"enumerate": enumerate_part, "tradeoff": tradeoff_part}[sys.argv[1]](*sys.argv[2:])
